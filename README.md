@@ -1201,3 +1201,223 @@ ReactDOM.render(
 </Provider>
 , document.getElementById('root'));
 ```
+
+### ⭐️ API 컨텐츠 비우기
+
+#### src/redux/posts/action.js(수정)
+``` javascript
+(...)
+
+export const actionTypes = {
+  ...,
+  CLEAR_POST: 'posts/CLEAR_POST'
+}
+
+export const clearPost = () => {
+  return {
+    type: actionTypes.CLEAR_POST
+  }
+}
+
+(...)
+```
+#### src/redux/posts/redcer.js(수정)
+
+``` javascript
+(...)
+
+case actionTypes.CLEAR_POST:
+  return {
+    ...state,
+    post: reducerUtils.initial()
+  };
+
+(...)
+```
+
+#### src/container/postView.js(수정)
+
+``` javascript
+import { getPost, clearPost } from '../redux/posts/action';
+
+(...)
+
+useEffect(() => {
+  dispatch(getPost(postId));
+  return () => {
+    dispatch(clearPost());
+  }
+}, [postId, dispatch]);
+
+(...)
+```
+
+### ⭐️ API 재로딩 문제해결 (리스트)
+
+#### 방법1. 
+#### src/container/postList.js(수정)
+
+``` javascript
+(...)
+
+useEffect(() => {
+  if (data) return;
+  dispatch(getPosts());
+}, [data, dispatch]);
+
+(...)
+```
+
+#### 방법2.
+
+#### src/lib/asyncUtils.js(수정)
+
+``` javascript
+export const handleAsyncActions = (type, key, keepData = false) => {
+
+(...)
+
+  return {
+    ...state,
+    [key]: reducerUtils.loading(keepData ? state[key].data : null)
+  };
+
+(...)
+
+};
+```
+
+### src/redux/posts/reducer.js(수정)
+
+``` javascript
+(...)
+
+return handleAsyncActions(actionTypes.GET_POSTS, 'posts', true)(state, action);
+
+(...)
+```
+
+#### src/container/postList.js(수정)
+
+``` javascript
+(...)
+
+if (loading && !data) return <div>로딩중...</div>;
+
+(...)
+```
+
+### ⭐️ API 재로딩 문제해결 (상세)
+
+#### src/lib/asyncUtils.js(수정)
+
+``` javascript
+(...)
+
+const defaultIdSelector = param => param;
+export const createPromiseThunkById = (type, promiseCreator, idSelector = defaultIdSelector) => {
+  const [SUCCESS, ERROR] = [`${type}_SUCCESS`, `${type}_ERROR`];
+
+  return param => async dispatch => {
+    const id = idSelector(param);
+    dispatch({ type, meta: id });
+    try {
+      const payload = await promiseCreator(param);
+      dispatch({ type: SUCCESS, payload, meta: id });
+    } catch (e) {
+      dispatch({ type: ERROR, error: true, payload: e, meta: id });
+    }
+  };
+};
+
+(...)
+
+export const handleAsyncActionsById = (type, key, keepData = false) => {
+  const [SUCCESS, ERROR] = [`${type}_SUCCESS`, `${type}_ERROR`];
+  return (state, action) => {
+    const id = action.meta;
+    console.log(id);
+    switch (action.type) {
+      case type:
+        return {
+          ...state,
+          [key]: {
+            ...state[key],
+            [id]: reducerUtils.loading(
+              keepData ? state[key][id] && state[key][id].data : null
+            )
+          }
+        };
+      case SUCCESS:
+        return {
+          ...state,
+          [key]: {
+            ...state[key],
+            [id]: reducerUtils.success(action.payload)
+          }
+        };
+      case ERROR:
+        return {
+          ...state,
+          [key]: {
+            ...state[key],
+            [id]: reducerUtils.error(action.payload)
+          }
+        };
+      default:
+        return state;
+    }
+  };
+};
+
+(...)
+```
+
+#### src/redux/posts/action.js(수정)
+
+``` javascript
+import { createPromiseThunk, createPromiseThunkById } from '../../lib/asyncUtils';
+
+(...)
+
+export const getPost = createPromiseThunkById(actionTypes.GET_POST, postsAPI.getPostById);
+```
+
+#### src/redux/posts/reducer.js(수정)
+
+``` javascript
+import { reducerUtils, handleAsyncActions, handleAsyncActionsById } from '../../lib/asyncUtils';
+
+(...)
+
+case actionTypes.GET_POST:
+case actionTypes.GET_POST_SUCCESS:
+case actionTypes.GET_POST_ERROR:
+  return handleAsyncActionsById(actionTypes.GET_POST, 'post', true)(state, action);
+
+(...)
+```
+
+#### src/container/postView.js(수정)
+
+``` javascript
+(...)
+
+const { data, loading, error } = useSelector(
+  state => state.posts.post[postId]
+) || {
+  loading: false,
+  data: null,
+  error: null
+};
+
+const dispatch = useDispatch();
+
+useEffect(() => {
+  dispatch(getPost(postId));
+}, [postId, dispatch]);
+
+if (loading && !data) return <div>로딩중...</div>;
+
+(...)
+```

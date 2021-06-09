@@ -22,6 +22,7 @@
     "html-loader": "^2.1.2",
     "html-webpack-plugin": "4.4.0",
     "redux-devtools-extension": "^2.13.8",
+    "redux-logger": "^3.0.6",
     "webpack": "^4.44.2",
     "webpack-cli": "^3.1.1",
     "webpack-dev-middleware": "^4.0.2",
@@ -31,6 +32,7 @@
   "dependencies": {
     "@babel/runtime": "^7.14.0",
     "axios": "^0.21.0",
+    "history": "^5.0.0",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
     "react-redux": "^7.2.4",

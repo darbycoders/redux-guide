@@ -1,5 +1,5 @@
 import * as postsAPI from '../../api/posts'; // api/posts 안의 함수 모두 불러오기
-import { createPromiseThunk } from '../../lib/asyncUtils';
+import { createPromiseThunk, createPromiseThunkById } from '../../lib/asyncUtils';
 
 export const actionTypes = {
   GET_POSTS: 'posts/GET_POSTS',
@@ -9,7 +9,14 @@ export const actionTypes = {
   GET_POST: 'posts/GET_POST',
   GET_POST_SUCCESS:'posts/GET_POST_SUCCESS',
   GET_POST_ERROR: 'posts/GET_POST_ERROR',
+
+  CLEAR_POST: 'posts/CLEAR_POST'
 }
 
 export const getPosts = createPromiseThunk(actionTypes.GET_POSTS, postsAPI.getPosts);
-export const getPost = createPromiseThunk(actionTypes.GET_POST, postsAPI.getPostById);
+export const getPost = createPromiseThunkById(actionTypes.GET_POST, postsAPI.getPostById);
+export const clearPost = () => {
+  return {
+    type: actionTypes.CLEAR_POST
+  }
+}

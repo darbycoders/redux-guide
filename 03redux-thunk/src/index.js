@@ -8,7 +8,6 @@ import Counter from './counter';
 import PostListPage from './pages/postList';
 import PostViewPage from './pages/postView';
 
-
 ReactDOM.render(
 <Provider store={store}>
   <Counter />
