@@ -645,3 +645,132 @@ ReactDOM.render(
 ```
 
 ---
+
+## 03.redux-thunk
+
+### 🐶 Counter 기능구현 예제
+
+#### src/redux/counter/action.js
+
+``` javascript
+export const actionTypes = {
+  INCREASE: 'counter/INCREASE',
+  DECREASE: 'counter/DECREASE'
+}
+
+function increase() {
+  return {
+    type: actionTypes.INCREASE
+  }
+}
+
+function decrease() {
+  return {
+    type: actionTypes.DECREASE
+  }
+}
+
+export const increaseAsync = () => dispatch => {
+  setTimeout(()=>(dispatch(increase())),1000)
+}
+export const decreaseAsync = () => dispatch => {
+  setTimeout(()=>(dispatch(decrease())),1000)
+}
+```
+
+#### src/redux/counter/reducer.js
+
+``` javascript
+import { actionTypes } from "./action";
+
+const initialState = 0;
+
+export default function counter( state = initialState, action ) {
+  switch(action.type) {
+    case actionTypes.INCREASE :
+      return state + 1;
+    case actionTypes.DECREASE :
+      return state - 1;
+    default:
+      return state;
+  }
+}
+```
+
+#### src/redux/configStore.js
+
+``` javascript
+import { createStore, compose, applyMiddleware } from 'redux';
+import { composeWithDevTools } from 'redux-devtools-extension';
+import reduxThunk from 'redux-thunk';
+
+import rootReducer from './../redux';
+
+const middlewares = [reduxThunk];
+const enhancer = process.env.NODE_ENV === 'production'
+  ? compose(applyMiddleware(...middlewares))
+  : composeWithDevTools(applyMiddleware(...middlewares));
+
+export const store = createStore(rootReducer, enhancer);
+```
+
+#### src/redux/index.js
+
+``` javascript
+import { combineReducers } from 'redux';
+
+import counter from './counter/reducer';
+
+const rootReducer = combineReducers({
+  counter
+});
+
+export default rootReducer;
+```
+
+#### src/counter.js
+
+``` javascript
+import React from 'react';
+import { useSelector, useDispatch } from 'react-redux';
+
+import { decreaseAsync, increaseAsync } from './redux/counter/action';
+
+export default function Counter() {
+  const number = useSelector(state => state.counter);
+  
+  const dispatch = useDispatch();
+
+  const onIncrease = () => {
+    dispatch(increaseAsync());
+  };
+  const onDecrease = () => {
+    dispatch(decreaseAsync());
+  };
+
+  return(
+    <>
+      <span>{number}</span>
+      <button onClick={onIncrease}>PLUS</button>
+      <button onClick={onDecrease}>MINUS</button>
+    </>
+  )
+}
+```
+
+#### src/index.js
+
+``` javascript
+import React from 'react';
+import ReactDOM from 'react-dom';
+import { Provider } from 'react-redux';
+import { store } from './redux/configStore';
+
+import Counter from './counter';
+
+ReactDOM.render(
+<Provider store={store}>
+  <Counter />
+</Provider>
+, document.getElementById('root'));
+```
