@@ -1494,7 +1494,7 @@ const sumGenerator = sumGeneratorFunction();
 {value:12,done:true}
 
 function* watchGenerator() {
-    console.log('Monitering Start');
+    console.log('Monitering Start!');
     while(true) {
         const action = yield;
         if (action.type === 'HELLO') {
@@ -1509,23 +1509,23 @@ function* watchGenerator() {
 const watch = watchGenerator();
 
 > watch.next();
-'모니터링 시작!'
+'Monitering Start!'
 {value:undefined,done:false}
 
 > watch.next({type: 'HELLO'});
-'안녕하세요?'
+'HELLO?'
 {value:undefined,done:false}
 
 > watch.next({type: 'BYE'});
-'안녕히가세요.'
+'BYE BYE.'
 {value:undefined,done:false}
 
 > watch.next({type: 'BYE'});
-'안녕히가세요.'
+'BYE BYE.'
 {value:undefined,done:false}
 
 > watch.next({type: 'BYE'});
-'안녕히가세요.'
+'BYE BYE.'
 {value:undefined,done:false}
 ```
 
@@ -1673,6 +1673,525 @@ import Counter from './counter';
 ReactDOM.render(
 <Provider store={store}>
   <Counter />
+</Provider>
+, document.getElementById('root'));
+```
+
+### 🐶 웹요청 기능구현 예제
+
+#### src/api/posts.js
+
+``` javascript
+// n 밀리세컨드동안 기다리는 프로미스를 만들어주는 함수
+const sleep = n => new Promise(resolve => setTimeout(resolve, n));
+
+// 가짜 포스트 목록 데이터
+const posts = [
+  {
+    id: 1,
+    title: 'title01',
+    body: 'content01.content01.content01.content01.content01.content01.content01.content01.content01.content01.content01.content01.content01.content01.content01.content01.content01.content01.content01.content01.content01.content01.content01.content01.'
+  },
+  {
+    id: 2,
+    title: 'title02',
+    body: 'content02.content02.content02.content02.content02.content02.content02.content02.content02.content02.content02.content02.content02.content02.content02.content02.content02.content02.content02.content02.content02.content02.content02.content02.'
+  },
+  {
+    id: 3,
+    title: 'title03',
+    body: 'content03.content03.content03.content03.content03.content03.content03.content03.content03.content03.content03.content03.content03.content03.content03.content03.content03.content03.content03.content03.content03.content03.content03.content03.'
+  }
+];
+
+// 포스트 목록을 가져오는 비동기 함수
+export const getPosts = async () => {
+  await sleep(500); // 0.5초 쉬고
+  return posts; // posts 배열
+};
+
+// ID로 포스트를 조회하는 비동기 함수
+export const getPostById = async id => {
+  await sleep(500); // 0.5초 쉬고
+  return posts.find(post => post.id === id); // id 로 찾아서 반환
+};
+```
+
+#### src/lib/asyncUtils.js
+
+##### 리덕스 모듈에 반복되는 코드를 리팩토링하는 유틸소스입니다.
+
+``` javascript
+import { call, put } from 'redux-saga/effects';
+
+// 프로미스를 기다렸다가 결과를 디스패치하는 사가
+export const createPromiseSaga = (type, promiseCreator) => {
+  const [SUCCESS, ERROR] = [`${type}_SUCCESS`, `${type}_ERROR`];
+  return function* saga(action) {
+    try {
+      // 재사용성을 위하여 promiseCreator 의 파라미터엔 action.payload 값을 넣도록 설정합니다.
+      const payload = yield call(promiseCreator, action.payload);
+      yield put({ type: SUCCESS, payload });
+    } catch (e) {
+      yield put({ type: ERROR, error: true, payload: e });
+    }
+  };
+};
+
+// 특정 id의 데이터를 조회하는 용도로 사용하는 사가
+// API를 호출 할 때 파라미터는 action.payload를 넣고,
+// id 값을 action.meta로 설정합니다.
+export const createPromiseSagaById = (type, promiseCreator) => {
+  const [SUCCESS, ERROR] = [`${type}_SUCCESS`, `${type}_ERROR`];
+  return function* saga(action) {
+    const id = action.meta;
+    try {
+      const payload = yield call(promiseCreator, action.payload);
+      yield put({ type: SUCCESS, payload, meta: id });
+    } catch (e) {
+      yield put({ type: ERROR, error: e, meta: id });
+    }
+  };
+};
+
+// 리듀서에서 사용 할 수 있는 여러 유틸 함수들입니다.
+export const reducerUtils = {
+  // 초기 상태. 초기 data 값은 기본적으로 null 이지만
+  // 바꿀 수도 있습니다.
+  initial: (initialData = null) => ({
+    loading: false,
+    data: initialData,
+    error: null
+  }),
+  // 로딩중 상태. prevState의 경우엔 기본값은 null 이지만
+  // 따로 값을 지정하면 null 로 바꾸지 않고 다른 값을 유지시킬 수 있습니다.
+  loading: (prevState = null) => ({
+    loading: true,
+    data: prevState,
+    error: null
+  }),
+  // 성공 상태
+  success: payload => ({
+    loading: false,
+    data: payload,
+    error: null
+  }),
+  // 실패 상태
+  error: error => ({
+    loading: false,
+    data: null,
+    error: error
+  })
+};
+
+// 비동기 관련 액션들을 처리하는 리듀서를 만들어줍니다.
+// type 은 액션의 타입, key 는 상태의 key (예: posts, post) 입니다.
+export const handleAsyncActions = (type, key, keepData = false) => {
+  const [SUCCESS, ERROR] = [`${type}_SUCCESS`, `${type}_ERROR`];
+  return (state, action) => {
+    switch (action.type) {
+      case type:
+        return {
+          ...state,
+          [key]: reducerUtils.loading(keepData ? state[key].data : null)
+        };
+      case SUCCESS:
+        return {
+          ...state,
+          [key]: reducerUtils.success(action.payload)
+        };
+      case ERROR:
+        return {
+          ...state,
+          [key]: reducerUtils.error(action.payload)
+        };
+      default:
+        return state;
+    }
+  };
+};
+
+// id별로 처리하는 유틸함수
+export const handleAsyncActionsById = (type, key, keepData = false) => {
+  const [SUCCESS, ERROR] = [`${type}_SUCCESS`, `${type}_ERROR`];
+  return (state, action) => {
+    const id = action.meta;
+    switch (action.type) {
+      case type:
+        return {
+          ...state,
+          [key]: {
+            ...state[key],
+            [id]: reducerUtils.loading(
+              // state[key][id]가 만들어져있지 않을 수도 있으니까 유효성을 먼저 검사 후 data 조회
+              keepData ? state[key][id] && state[key][id].data : null
+            )
+          }
+        };
+      case SUCCESS:
+        return {
+          ...state,
+          [key]: {
+            ...state[key],
+            [id]: reducerUtils.success(action.payload)
+          }
+        };
+      case ERROR:
+        return {
+          ...state,
+          [key]: {
+            ...state[key],
+            [id]: reducerUtils.error(action.payload)
+          }
+        };
+      default:
+        return state;
+    }
+  };
+};
+```
+
+#### src/redux/posts/action.js
+``` javascript
+/* 리팩토링 하기 전 */
+import * as postsAPI from '../api/posts'; // api/posts 안의 함수 모두 불러오기
+import { call, put, takeEvery } from 'redux-saga/effects';
+
+export const actionTypes = {
+  // 포스트 여러개 조회하기
+  GET_POSTS: 'posts/GET_POSTS', // 요청 시작
+  GET_POSTS_SUCCESS:'posts/GET_POSTS_SUCCESS', // 요청 성공
+  GET_POSTS_ERROR: 'posts/GET_POSTS_ERROR', // 요청 실패
+  // 포스트 하나 조회하기
+  GET_POST: 'posts/GET_POST',
+  GET_POST_SUCCESS:'posts/GET_POST_SUCCESS',
+  GET_POST_ERROR: 'posts/GET_POST_ERROR',
+}
+
+export const getPosts = () => ({ type: actionTypes.GET_POSTS });
+// payload는 파라미터 용도, meta는 리듀서에서 id를 알기위한 용도
+export const getPost = id => ({ type: actionTypes.GET_POST, payload: id, meta: id });
+
+function* getPostsSaga() {
+  try {
+    const posts = yield call(postsAPI.getPosts); // call 을 사용하면 특정 함수를 호출하고, 결과물이 반환 될 때까지 기다려줄 수 있습니다.
+    yield put({
+      type: actionTypes.GET_POSTS_SUCCESS,
+      payload: posts
+    }); // 성공 액션 디스패치
+  } catch (e) {
+    yield put({
+      type: actionTypes.GET_POSTS_ERROR,
+      error: true,
+      payload: e
+    }); // 실패 액션 디스패치
+  }
+}
+
+// 액션이 지니고 있는 값을 조회하고 싶다면 action을 파라미터로 받아와서 사용 할 수 있습니다.
+function* getPostSaga(action) {
+  const param = action.payload;
+  const id = action.meta;
+  try {
+    const post = yield call(postsAPI.getPostById, param); // API 함수에 넣어주고 싶은 인자는 call 함수의 두번째 인자부터 순서대로 넣어주면 됩니다.
+    yield put({
+      type: actionTypes.GET_POST_SUCCESS,
+      payload: post,
+      meta: id
+    });
+  } catch (e) {
+    yield put({
+      type: actionTypes.GET_POST_ERROR,
+      error: true,
+      payload: e,
+      meta: id
+    });
+  }
+}
+
+// 사가들을 합치기
+export function* postsSaga() {
+  yield takeEvery(GET_POSTS, getPostsSaga);
+  yield takeEvery(GET_POST, getPostSaga);
+}
+
+/* 리팩토링 한 후 */
+import * as postsAPI from '../../api/posts'; // api/posts 안의 함수 모두 불러오기
+import { createPromiseSaga, createPromiseSagaById } from '../../lib/asyncUtils';
+import { takeEvery } from 'redux-saga/effects';
+
+export const actionTypes = {
+  // 포스트 여러개 조회하기
+  GET_POSTS: 'posts/GET_POSTS', // 요청 시작
+  GET_POSTS_SUCCESS:'posts/GET_POSTS_SUCCESS', // 요청 성공
+  GET_POSTS_ERROR: 'posts/GET_POSTS_ERROR', // 요청 실패
+  // 포스트 하나 조회하기
+  GET_POST: 'posts/GET_POST',
+  GET_POST_SUCCESS:'posts/GET_POST_SUCCESS',
+  GET_POST_ERROR: 'posts/GET_POST_ERROR',
+}
+
+export const getPosts = () => ({ type: actionTypes.GET_POSTS });
+export const getPost = id => ({ type: actionTypes.GET_POST, payload: id, meta: id });
+
+const getPostsSaga = createPromiseSaga(actionTypes.GET_POSTS, postsAPI.getPosts);
+const getPostSaga = createPromiseSagaById(actionTypes.GET_POST, postsAPI.getPostById);
+
+// 사가들을 합치기
+export function* postsSaga() {
+  yield takeEvery(actionTypes.GET_POSTS, getPostsSaga);
+  yield takeEvery(actionTypes.GET_POST, getPostSaga);
+}
+```
+
+#### src/redux/posts/reducer.js
+
+``` javascript
+/* 리팩토링 하기 전 */
+import { actionTypes } from './action';
+
+const initialState = {
+  posts: {
+    loading: false,
+    data: null,
+    error: null
+  },
+  post: {
+    loading: false,
+    data: null,
+    error: null
+  }
+};
+
+export default function posts(state = initialState, action) {
+  const id = action.meta;
+
+  switch (action.type) {
+    case actionTypes.GET_POSTS:
+      return {
+        ...state,
+        posts: {
+          loading: true,
+          data: null,
+          error: null
+        }
+      };
+    case actionTypes.GET_POSTS_SUCCESS:
+      return {
+        ...state,
+        posts: {
+          loading: false,
+          data: action.posts,
+          error: null
+        }
+      };
+    case actionTypes.GET_POSTS_ERROR:
+      return {
+        ...state,
+        posts: {
+          loading: false,
+          data: null,
+          error: action.error
+        }
+      };
+    case actionTypes.GET_POST:
+      return {
+        ...state,
+        post: {
+          ...state[post],
+          [id]: {
+            loading: true,
+            data: null,
+            error: null
+          }          
+        }
+      };
+    case actionTypes.GET_POST_SUCCESS:
+      return {
+        ...state,
+        post: {
+          ...state[post],
+          [id]: {
+            loading: false,
+            data: action.post,,
+            error: null
+          }          
+        }
+      };
+    case actionTypes.GET_POST_ERROR:
+      return {
+        ...state,
+        post: {
+          ...state[post],
+          [id]: {
+            loading: false,
+            data: null,
+            error: action.error
+          }          
+        }
+      };
+    default:
+      return state;
+  }
+}
+
+/* 리팩토링 한 후 */
+import { actionTypes } from './action';
+import { reducerUtils, handleAsyncActions, handleAsyncActionsById } from '../../lib/asyncUtils';
+
+// initialState 쪽도 반복되는 코드를 initial() 함수를 사용해서 리팩토링 했습니다.
+const initialState = {
+  posts: reducerUtils.initial(),
+  post: reducerUtils.initial()
+};
+
+export default function posts(state = initialState, action) {
+  switch (action.type) {
+    case actionTypes.GET_POSTS:
+    case actionTypes.GET_POSTS_SUCCESS:
+    case actionTypes.GET_POSTS_ERROR:
+      return handleAsyncActions(actionTypes.GET_POSTS, 'posts', true)(state, action);
+    case actionTypes.GET_POST:
+    case actionTypes.GET_POST_SUCCESS:
+    case actionTypes.GET_POST_ERROR:
+      return handleAsyncActionsById(actionTypes.GET_POST, 'post', true)(state, action);
+    default:
+      return state;
+  }
+}
+```
+
+#### src/components/postList.js
+
+``` javascript
+import React from 'react';
+import { Link } from 'react-router-dom';
+
+export default function PostList({ posts }) {
+  return (
+    <ul>
+      {posts.map(post => (
+        <li key={post.id}>
+          <Link to={`/${post.id}`}>{post.title}</Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+#### src/container/postList.js
+
+``` javascript
+import React, { useEffect } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
+import PostList from '../components/PostList';
+import { getPosts } from '../redux/posts/action';
+
+export default function PostListContainer() {
+  const { data, loading, error } = useSelector(state => state.posts.posts);
+
+  const dispatch = useDispatch();
+
+  // 컴포넌트 마운트 후 포스트 목록 요청
+  useEffect(() => {
+    dispatch(getPosts());
+  }, [dispatch]);
+  
+  if (loading) return <div>로딩중...</div>;
+  if (error) return <div>에러 발생!</div>;
+  if (!data) return null;
+  return <PostList posts={data} />;
+}
+```
+
+#### src/pages/postList.js
+
+``` javascript
+import React from 'react';
+import PostListContainer from '../container/postList';
+
+export default function PostListPage() {
+  return <PostListContainer />;
+}
+```
+
+#### src/components/postView.js
+
+``` javascript
+import React from 'react';
+
+export default function PostView({ post }) {
+  const { title, body } = post;
+  return (
+    <div>
+      <h1>{title}</h1>
+      <p>{body}</p>
+    </div>
+  );
+}
+```
+
+#### src/container/postView.js
+
+``` javascript
+import React, { useEffect } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
+import PostView from '../components/postView';
+import { getPost } from '../redux/posts/action';
+
+export default function PostContainer({ postId }) {
+  const { data, loading, error } = useSelector(state => state.posts.post);
+  const dispatch = useDispatch();
+
+  useEffect(() => {
+    dispatch(getPost(postId));
+  }, [postId, dispatch]);
+
+  if (loading) return <div>로딩중...</div>;
+  if (error) return <div>에러 발생!</div>;
+  if (!data) return null;
+
+  return <PostView post={data} />;
+}
+```
+
+#### src/pages/postView.js
+
+``` javascript
+import React from 'react';
+import PostViewContainer from '../container/postView';
+
+export default function PostViewPage({ match }) {
+  const { id } = match.params;
+
+  return <PostViewContainer postId={parseInt(id, 10)} />;
+}
+```
+
+#### src/index.js
+
+``` javascript
+import React from 'react';
+import ReactDOM from 'react-dom';
+import { BrowserRouter as Router, Switch, Route } from "react-router-dom";
+import { Provider } from 'react-redux';
+import { store } from './redux/configStore';
+
+import Counter from './counter';
+import PostListPage from './pages/postList';
+import PostViewPage from './pages/postView';
+
+
+ReactDOM.render(
+<Provider store={store}>
+  <Counter />
+  <Router>
+    <Switch>
+      <Route path="/" exact component={PostListPage} />
+      <Route path="/:id" component={PostViewPage}/>
+    </Switch>    
+  </Router>
 </Provider>
 , document.getElementById('root'));
 ```
